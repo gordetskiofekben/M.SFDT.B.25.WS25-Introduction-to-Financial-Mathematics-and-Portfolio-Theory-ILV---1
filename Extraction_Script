@@ -1,38 +1,36 @@
- # Import libraries: refinitiv.data allows to download stock data, pandas allow to work with data frames \n,
-    # (data organized in columns and rows, with each column having a specific name)\n,
-    import refinitiv.data as rd\n,
-    import pandas as pd\n,
-    \n,
-    # Open session to establish connection\n,
-    rd.open_session()\n,
-    \n,
-    # Set the parameters of our data download: list of stocks, in what date range, on what frequency, and where to save it\n,
-    stocks = [\NVDA.O\, \PLTR.O\, \TSLA.O\, \AMZN.O\, \AMD.O\, \AAPL.O\]\n,
-    start_date = \2021-01-01\\n,
-    end_date = \2025-12-31\\n,
-    frequency = \M\\n,
-    output_file = \dataset_multistock_final.csv\\n,
-    \n,
-    # Download historical prices for each stock, and save it in a table called df\n,
-    df = rd.get_history(\n,
-        universe=stocks,\n,
-        fields=[\TR.PriceClose\],\n,
-        parameters={\n,
-            \SDate\: start_date,\n,
-            \EDate\: end_date,\n,
-            \Frq\: frequency})\n,
-    \n,
-    # Reshape the table into a long format, with each row representing the date, the ticket, and the close price\n,
-    df = df.reset_index()\n,
-    df_long = df.melt(\n,
-        id_vars=\Date\,\n,
-        var_name=\Ticker\,\n,
-        value_name=\Close\)\n,
-    \n,
-    # Remove rows there is missing price information \n,
-    df_long = df_long.dropna()\n,
-    \n,
-    # Save data as a CSV file and export \n,
-    df_long.to_csv(output_file, index=False)\n
-   ]
-  },
+# Import libraries: refinitiv.data allows to download stock data, pandas allow to work with data frames 
+# (data organized in columns and rows, with each column having a specific name)
+import refinitiv.data as rd
+import pandas as pd
+ 
+# Open session to establish connection
+rd.open_session()
+ 
+# Set the parameters of our data download: list of stocks, in what date range, on what frequency, and where to save it
+stocks = ["NVDA.O", "PLTR.O", "TSLA.O", "AMZN.O", "AMD.O", "AAPL.O"]
+start_date = "2021-01-01"
+end_date = "2025-12-31"
+frequency = "M"
+output_file = "dataset_multistock_final.csv"
+ 
+# Download historical prices for each stock, and save it in a table called df
+df = rd.get_history(
+    universe=stocks,
+    fields=["TR.PriceClose"],
+    parameters={
+        "SDate": start_date,
+        "EDate": end_date,
+        "Frq": frequency})
+ 
+# Reshape the table into a long format, with each row representing the date, the ticket, and the close price
+df = df.reset_index()
+df_long = df.melt(
+    id_vars="Date",
+    var_name="Ticker",
+    value_name="Close")
+ 
+# Remove rows there is missing price information 
+df_long = df_long.dropna()
+ 
+# Save data as a CSV file and export 
+df_long.to_csv(output_file, index=False)
