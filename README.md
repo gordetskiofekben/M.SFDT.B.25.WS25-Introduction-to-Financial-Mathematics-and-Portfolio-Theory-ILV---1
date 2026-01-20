@@ -6,4 +6,4 @@ M.SFDT.B.25.WS25 Introduction to Financial Mathematics and Portfolio Theory ILV 
 
 Handed to - Prof. Karl Krycha
 
-Assignment was written by - Gordetski, Borecka, Hödl, Andrasek, Askari, Askari, Batebi
+Assignment was written by - Gordetski, Borecka, Hödl, Andrasek, Askari, Askari, Batebi, Kaman
