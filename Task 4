@@ -1,0 +1,113 @@
+ 4. Value at Risk (VaR) and Expected Shortfall (ES)
+
+# 4.1. Preparation before calculations
+
+# 4.1.1. Import the libraries needed
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.stats import norm
+
+
+# 4.1.2. Set the parameter for the confidence level
+confidence_level = 0.95 # Confidence level defined at 95%
+alpha = 1 - confidence_level # Tail probability for the losses (left tail) defined at 5%
+
+
+# 4.1.3. Load data from .csv and format into the correct data types
+df = pd.read_csv("dataset_multistock_final_daily_mathematics.csv", sep=",", decimal=".")
+df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y")
+df["Close"] = pd.to_numeric(df["Close"])
+
+# 4.1.4. Sort by ticker and date
+df = df.sort_values(["Ticker", "Date"])
+
+
+# Repeat the below for each ticker
+for ticker in df["Ticker"].unique():
+    
+    # 4.2. Keep only the data of the current ticker
+    df_ticker = df[df["Ticker"] == ticker].copy()
+
+    # 4.3. Calculate daily percentage returns
+    df_ticker["Return_pct"] = (df_ticker["Close"] / df_ticker["Close"].shift(1) - 1) * 100
+    returns = df_ticker["Return_pct"].dropna().values
+
+    
+    # 4.4. Calculate Value at Risk (VaR) and Expected Shortfall (ES)
+
+
+    # 4.4.1. Calculate VaR as the empirical alpha% quantile and ES as the average of the values lower than VaR
+    VaR_empirical = np.percentile(returns, alpha * 100)
+    ES_empirical = returns[returns <= VaR_empirical].mean()
+
+    # 4.4.2. Calculate VaR and ES assuming that the returns follow a Normal distribution with the calculated mean and standard deviation
+    mean_ret = np.mean(returns)  
+    std_ret = np.std(returns, ddof=1) # Calculate the standard deviation of the sample of returns
+
+    VaR_normal = mean_ret + std_ret * norm.ppf(alpha) # norm.ppf(alpha) is the z-score of the quantile alpha
+    ES_normal = returns[returns <= VaR_normal].mean()
+
+    # 4.4.3. Round the values to the second decimal place for readability
+    VaR_empirical = round(VaR_empirical, 2)
+    ES_empirical = round(ES_empirical, 2)
+    VaR_normal = round(VaR_normal, 2)
+    ES_normal = round(ES_normal, 2)
+
+    # 4.4.4. Print the numerical results
+    print(f"{ticker}")
+    print("Value at Risk (VaR) and Expected Shortfall (ES):")
+    print(f"Empirical Method: VaR = {VaR_empirical}% | ES = {ES_empirical}%")
+    print(f"Normal Approximation: VaR = {VaR_normal}% | ES = {ES_normal}%")
+
+    
+    # 4.5 Plot the returns distribution with the respective VaR and ES
+    
+    # 4.5.1. Define the figure dimensions
+    plt.figure(figsize=(10, 6))
+
+    # 4.5.2. Plot the histogram of empirical returns
+    plt.hist(
+        returns,
+        bins="auto", # automatically calculates the number of bins
+        density=True,
+        alpha=0.6, # transparency of the bars
+        color="blue",
+        label="Empirical Returns (%)"
+    )
+
+    # 4.5.3. Plot the normal distribution on top
+    x_values = np.linspace(np.min(returns), np.max(returns), 500) # equally spaced sequence starting in the from the minimum value of the returns until the maximum value of the returns
+    plt.plot(
+        x_values,
+        norm.pdf(x_values, mean_ret, std_ret), # probability density function (pdf) of the normal distribution with the same mean and standard deviation as the returns
+        color="orange",
+        lw=3,
+        label="Normal Distribution"
+    )
+
+    # 4.5.4. Plot the VaR and ES calculated with the empirical quantiles
+    plt.axvline(VaR_empirical, color="black", linestyle="--", linewidth=3, label="VaR (Empirical)") # vertical line at the value of empirical VaR
+    plt.axvline(ES_empirical, color="red", linestyle=":", linewidth=3, label="ES (Empirical)") # vertical line at the value of empirical ES
+
+    # 4.5.5. Plot the VaR and ES calculated with the normal assumption
+    plt.axvline(VaR_normal, color="green", linestyle="--", linewidth=3, label="VaR (Normal)") # vertical line at the value of normal VaR
+    plt.axvline(ES_normal, color="brown", linestyle=":", linewidth=3, label="ES (Normal)") # vertical line at the value of normal ES
+
+    # 4.5.6. Add appropriate title based on ticker, labels and format the plot
+    plt.title(f"Return Distribution with VaR & ES — {ticker}")
+    plt.xlabel("Daily Return (%)")
+    plt.ylabel("Relative Frequency")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    # 4.5.7. Save the figure with the appropriate name based on the ticker
+    plt.savefig(f"returns_VaR_ES_{ticker}.png", dpi=300)
+
+    # 4.5.8. Show the figure
+    plt.show()
+    plt.close()
+
+    # Horizontal line to separate the results of each ticker
+    print("-" * 50)
