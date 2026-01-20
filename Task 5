@@ -1,0 +1,289 @@
+#Example 5_Sohrab
+library(tidyquant) #library(tidyquant) loads a package that provides tidyverse-style tools for financial data analysis, such as working with prices, returns, and portfolio analytics.
+library(plotly) #library(plotly) loads a package that enables interactive data visualizations in R, allowing plots to be zoomed, hovered, and explored dynamically.
+library(timetk) #library(timetk) loads a package that provides tools for handling and transforming time series data in a tidy and xts-compatible format.
+library(tidyr) # library(tidyr) loads a package that helps tidy data by reshaping it between long and wide formats, making datasets easier to analyze.
+library(forcats) #library(forcats) loads a package for working with categorical variables (factors), making it easier to reorder, recode, and manage factor levels.
+
+
+# Read data from CSV (6 tickers)
+#reads the CSV file into R as a data frame named price_data and keeps text columns as character strings rather than converting them to factors.
+price_data <- read.csv("dataset_multistock_final_daily.csv", stringsAsFactors = FALSE)
+
+# rename columns to match the rest of the script
+names(price_data) <- c("date", "symbol", "adjusted")
+
+# make sure date is Date type----
+#Symbols are dynamically derived from the data.
+#tick <- unique(price_data$symbol) creates a vector containing all unique asset symbols (tickers) found in the symbol column of price_data.
+#----
+price_data$date <- as.Date(price_data$date)
+tick <- unique(price_data$symbol)  
+
+#The follwing code computes daily log returns for each asset separately, by grouping the data by ticker (symbol),
+#.... applying the period Return function to the adjusted prices, 
+#.... and storing the result as a tidy dataset with a column named ret.
+log_ret_tidy <- price_data %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = 'daily',
+               col_rename = 'ret',
+               type = 'log')
+#"tq_transmute()" & "group_by(symbol)"----
+#group_by(symbol): "Separate the data share by share"
+# ... groups the data by ticker (symbol) and then calculates daily log returns from the adjusted prices for each group, producing a tidy output with the return column named ret.
+#"tq_transmute()" is a function from the "tidyquant" package.Its overall role: Taking financial data and transforming it into new variables (such as returns, volatility, etc.)"
+#mutate_fun = periodReturn calculates returns by comparing each price to the previous period’s price and applying a standard return formula over the chosen period.
+#----
+head(log_ret_tidy)
+#"head()"----
+# "head()" is a base R function. It displays the first few rows of a table object, and by default it displays the first 6 rows.
+# "head()" : "Display the first 6 rows of the "log_ret_tidy" dataset in the console"
+# So why does "head()" need to exist? This line is a Sanity Check / Quality Control. That is, the programmer (or financial analyst) is saying "Before continuing with the heavy calculations, make sure the data you created is correct."
+#----
+#This code reshapes the tidy log-return data into a wide format by asset symbol and converts it into an xts time-series object for further financial analysis.
+log_ret_xts <- log_ret_tidy %>%
+  spread(symbol, value = ret) %>%
+  tk_xts()
+#"spread()"----
+# "spread()" is applied to the dataframe "log_ret_tidy". In other words, "log_ret_tidy" is passed as the first argument to "spread()".
+#"log_ret_xts" is an object whose value is equal to the output of the "tk_xts()" function.
+
+#"tk_xts()"----
+#"tk_xts()" is a predefined function in the "timetk" package. The function name is fixed. It was designed by the package authors (not by the programmer). The programmer only uses it, not defines or names it.
+#The name of the function "tk_xts()" is not accidental or arbitrary; the function name means: "Convert data to xts format with timetk tools"
+# "tk" → abbreviation for timekit / timetk
+# "xts" → time series class in R
+
+
+#----
+head(log_ret_xts)
+#head(log_ret_xts)----
+#head(log_ret_xts) displays the first few rows (by default, the first 6 observations) of the log_ret_xts time-series object so you can quickly inspect its structure and values.
+#----
+mean_ret <- colMeans(log_ret_xts)
+print(round(mean_ret, 5))
+#"mean_ret" & "Round"----
+# "mean_ret <- colMeans(log_ret_xts)" computes the average (mean) daily log return for each asset by taking the mean of each column in the time-series return matrix.
+    # What is "colMeans()"?: It is a base R function. It is neither from the tidyverse nor is it a fancy or financial function, but it calculates the mean of each column of a numeric matrix/data frame.
+    # "round(mean_ret, 5)" rounds mean_ret to 5 decimal places.
+        # "xts" stands for eXtensible Time Series.
+            # What exactly is the structure of "xts"? 1. index (time) 2. core data (numeric data)
+            # In "xts", dates are not columns, they are indexes.
+        # What is the difference between xts and data.frame? (Very important. For finance, this distinction is crucial):
+            # In data.frame / tibble,
+                  # date = a regular column. R does not “understand” that this is a time column. The chronological order is only apparent.
+            #In xts:
+                #Date = original index. 
+                #R understands: What is lag; What is rolling window; What is time alignment; 
+
+            # So,
+                #tidy = to see and explain.
+                #xts = to calculate and decide.
+
+
+#cov_mat ----
+#cov_mat <- cov(log_ret_xts) computes the covariance matrix of the assets’ daily log returns, measuring how each pair of asset returns moves together over time.
+#The covariance matrix stores the historical daily co-movements between all assets and serves as a fixed input for portfolio risk calculations applied repeatedly to different weight combinations.
+# annualized covariance matrix----
+#It saves the daily covariance matrix of asset returns.It saves the daily covariance matrix of asset returns.
+#It is for all assets simultaneously.
+#----
+cov_mat <- cov(log_ret_xts)
+print(round(cov_mat,4))
+cov_mat_annual <- cov_mat * 252
+
+num_port <- 5000 # The number of simulations of Monte Carlo portfolios 
+
+all_wts <- matrix(nrow = num_port,
+                  ncol = length(tick))
+#all_wts----
+#“We store the asset weights of all simulated portfolios in a matrix, where each row represents one portfolio and each column corresponds to one asset.”
+# "all_wts": Creates an empty matrix to store the weights of all simulated portfolios:
+      # matrix(data, nrow, ncol): If you don't provide data, R creates an empty matrix (NA).
+# This line prepares the memory of all weights and allows for extracting Tangency weights, extracting Min-Var weights, and drawing a bar chart of weights.
+# Why use matrix, not "data.frame"?
+      # 1- Speed:
+              # * Numeric matrix is faster than "data.frame"
+              # * Important for 5000 iterations
+      # 2-Mathematical simplicity:
+              # Weights are inherently a numeric array which is later converted to tibble for column naming, charting and reporting.
+
+#----
+port_returns <- vector('numeric', length = num_port)
+port_risk <- vector('numeric', length = num_port)
+sharpe_ratio <- vector('numeric', length = num_port)
+#Vectors----
+#"vector()" is a basic function in R that creates a vector of a specified type and length.
+#type ('numeric') → numeric
+#length (length = num_port) → number of simulated portfolios
+#----
+for (i in seq_along(port_returns)) {
+  #For----
+  #This is the core line of Monte Carlo Simulation and on each run:
+  # it creates a new random combination of assets, and in the 5000 loop, 5000 different portfolios are created.
+  #----
+  wts <- runif(length(tick)) 
+  #"wts"----
+  # "length(tick)" → number of assets. "runif(length(tick))" → generate some random weights.  
+  # "runif(length(tick))" generates a random number between 0 and 1 equal to the number of assets.
+  #runif() is a base R function (not tidyverse, not financial). Its job: to generate random numbers from a uniform distribution.
+  # runif(n, min = 0, max = 1)
+  # In the code of this program, min and max are not written so the default value is used:
+  # min = 0 and max = 1 means: random numbers between 0 and 1
+  # length(tick) = number of assets. So here = 6
+  #That is: "Generate 6 random numbers between 0 and 1"
+  #6 numbers, all positive, and their sum does not have to be 1 (yet).
+  #These are not yet "portfolio weights" because they do not sum to 1, but: these are the initial random preferences and the basis for building a random portfolio!
+  #Weights are not negative because:
+  # runif() only returns positive numbers so:
+  # We have no short selling and the portfolio is Long-only. That is: 
+  #conservative and realistic investment.
+  
+  #Why is a uniform distribution used?
+  # Economic and numerical: Each asset has an equal chance of being over or under weighted, ...
+  # .... and there is no bias about which stocks are "better". This means: unbiased simulation
+  #----
+  wts <- wts/sum(wts)
+  #Normalizes "wts"----
+  #The weights are normalized by dividing by the sum.
+  #This means that the portfolio is long-only (we do not have negative weights) and the total capital is divided between the assets.
+  # wts <- wts / sum(wts):
+  # Normalizes the weights and enforces the budget constraint. Without it, "wts" is not a portfolio weight at all.
+
+  #----
+  all_wts[i,] <- wts # Fills row i of the "all_wts" matrix with the weights of this portfolio.
+  port_ret <- sum(wts * mean_ret)
+  port_ret <- ((port_ret + 1)^252) - 1
+  port_returns[i] <- port_ret #This is the annual return of portfolio "i".
+  #port_returns----
+  #This line says: "If I construct a portfolio with weights wts and assume that past daily returns continue, what is the expected annual return of this portfolio?"
+  #sum(wts * mean_ret) + 1  : Why is +1 added?
+  # Returns are relative and must be converted to a growth factor for compounding.
+  # Example: Daily return = 0.001 but Daily growth factor = 1.001
+  # Economic: "If I have 1 unit of money today, how many units will it be tomorrow?"
+  
+  #Why the power to 252?
+  # 252 ≈ number of trading days per year. That is: the growth of an investment over a trading year.
+  # Economic: Converting daily return → annual return
+  #Why "- 1" at the end?
+  #Because: The output is still the "growth factor" but we want the annual return itself.
+  #Example: If the result is 1.12 then the return = 12%
+  #----
+  port_sd <- sqrt(t(wts) %*% (cov_mat_annual  %*% wts))
+  port_risk[i] <- port_sd 
+  #port_sd----
+  #port_sd: This line computes the annualized portfolio risk (standard deviation) using the portfolio weights and the annualized covariance matrix of asset returns.
+  #port_risk: This number shows how volatile/risky portfolio "i" is.
+  #It accounts for portfolio risk and is precisely complementary to this return.
+  # Key point: In addition to the risk of single assets, this risk also has the effect of covariances (Diversification).
+  #----
+  sr <- port_ret/port_sd
+  sharpe_ratio[i] <- sr 
+  #sharpe_ratio----
+  #Risk-free rate R_f=0 is assumed.
+  #This indicator says: "How much return does portfolio "i" give per unit of risk?"
+  # Later, with which.max(sharpe_ratio), the Tangency Portfolio is found.
+  #----
+}  
+
+#The following code combines the results of all simulated portfolios (after the loop) into one tidy table where ...
+#... each row is one portfolio (Return, Return, and SharpeRatio):
+portfolio_values <- tibble(Return = port_returns,
+                           Risk = port_risk,
+                           SharpeRatio = sharpe_ratio)
+
+#This line converts the portfolio weights object into a tidy tibble format to make it easier to inspect, ...
+#... manipulate, and combine with other tidy data structures.
+all_wts <- tk_tbl(all_wts)
+
+#The follwing line sets the column names of the portfolio weight matrix to match the asset names in the ...
+#...return time series, ensuring each weight is correctly linked to its asset.
+colnames(all_wts) <- colnames(log_ret_xts)
+
+#Following code combines portfolio weights with their corresponding return, risk, and Sharpe ratio values into ...
+#... a single tidy table for analysis and visualization.
+portfolio_values <- tk_tbl(cbind(all_wts, portfolio_values))
+
+#This line displays the first few rows of the portfolio_values table to quickly inspect the computed ...
+#... portfolio weights and performance metrics.
+head(portfolio_values)
+
+#Selects the portfolio with the lowest risk (minimum variance) by identifying the row with the smallest risk value.
+min_var <- portfolio_values[which.min(portfolio_values$Risk),]
+
+#Selects the portfolio with the highest Sharpe ratio by extracting the row corresponding to the maximum SharpeRatio value.
+max_sr <- portfolio_values[which.max(portfolio_values$SharpeRatio),]
+
+asset_cols <- colnames(log_ret_xts)
+
+#This block reshapes the minimum variance portfolio weights into long format and visualizes them as an ...
+#... interactive bar chart showing each asset’s weight in the portfolio:
+p <- min_var %>%
+  pivot_longer(cols = all_of(asset_cols),
+               names_to = "Asset",
+               values_to = "Weights") %>%
+  mutate(Asset = as.factor(Asset)) %>%
+    ggplot(aes(x = fct_reorder(Asset, Weights), y = Weights, fill = Asset)) +
+  geom_bar(stat = 'identity') +
+  theme_minimal() +
+  labs(x = 'Assets', y = 'Weights', title = "Minimum Variance Portfolio Weights") +
+  scale_y_continuous(labels = scales::percent)
+
+print(ggplotly(p))#Renders the ggplot object as an interactive Plotly chart, enabling zooming, hovering, and dynamic inspection of the plot.
+
+#This block reshapes the maximum Sharpe ratio (tangency) portfolio weights into long format and displays...
+#... them as an interactive bar chart showing each asset’s contribution to the portfolio.
+p <- max_sr %>%
+  pivot_longer(cols = all_of(asset_cols),
+               names_to = "Asset",
+               values_to = "Weights") %>%
+  mutate(Asset = as.factor(Asset)) %>%
+  ggplot(aes(x = fct_reorder(Asset, Weights), y = Weights, fill = Asset)) +
+  geom_bar(stat = 'identity') +
+  theme_minimal() +
+  labs(x = 'Assets', y = 'Weights', title = "Maximum Sharpe Ratio (Tangency) Portfolio Weights") +
+  scale_y_continuous(labels = scales::percent)
+
+print(ggplotly(p))#Renders the ggplot object as an interactive Plotly chart, enabling zooming, hovering, and dynamic inspection of the plot.
+
+#These lines compute small dynamic horizontal and vertical offsets based on the data range to properly position text annotations without overlapping key points in the plot.
+dx <- 0.03 * diff(range(portfolio_values$Risk))
+dy <- 0.03 * diff(range(portfolio_values$Return))
+
+#The following block creates an interactive risk–return scatter plot of all simulated portfolios, highlights the minimum variance and maximum Sharpe ratio portfolios, and dynamically annotates them to visualize the efficient frontier and optimal portfolio choices.
+p <- portfolio_values %>%
+  ggplot(aes(x = Risk, y = Return, color = SharpeRatio)) +
+  geom_point() +
+  theme_classic() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_continuous(
+    labels = scales::percent,
+    expand = expansion(mult = c(0.13, 0.02))
+  ) +
+  labs(x = 'Annualized Risk',
+       y = 'Annualized Returns',
+       title = "Portfolio Optimization & Efficient Frontier") +
+  geom_point(aes(x = Risk,
+                 y = Return), data = min_var, color = 'red') +
+  geom_point(aes(x = Risk,
+                 y = Return), data = max_sr, color = 'red') +
+  annotate('text',
+         x = max_sr$Risk - dx, y = max_sr$Return + dy,
+         label = "Tangency Portfolio") +
+  annotate('text',
+           x = min_var$Risk - dx, y = min_var$Return - dy,
+           label = "Minimum variance portfolio") +
+  
+  annotate(geom = 'segment',
+           x = max_sr$Risk - dx,  y = max_sr$Return + dy,
+           xend = max_sr$Risk,    yend = max_sr$Return,
+           color = 'red', arrow = arrow(type = "open")) +
+  
+  annotate(geom = 'segment',
+           x = min_var$Risk - dx, y = min_var$Return - dy,
+           xend = min_var$Risk,   yend = min_var$Return,
+           color = 'red', arrow = arrow(type = "open"))
+
+print(ggplotly(p))
